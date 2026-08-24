@@ -1,0 +1,12 @@
+int fib(int n) {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+int main() {
+    int f = fib(10);
+    printf("Fib(10) = %d\n", f);
+    return 0;
+}
