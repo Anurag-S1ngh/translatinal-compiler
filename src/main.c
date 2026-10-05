@@ -6,13 +6,17 @@
 #include "parser.h"
 #include "sema.h"
 #include "ir.h"
+#include "codegen.h"
 
 static void print_usage(const char *prog_name) {
-    fprintf(stderr, "Usage: %s <input_file> [--tokens|--ast|--ir]\n", prog_name);
+    fprintf(stderr, "Usage: %s <input_file> [--tokens|--ast|--ir|--translate|--emit-c] [-o <output>]\n", prog_name);
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  --tokens  Dump token stream from lexical analysis\n");
-    fprintf(stderr, "  --ast     Dump Abstract Syntax Tree from syntax analysis\n");
-    fprintf(stderr, "  --ir      Dump Three-Address Code IR (default)\n");
+    fprintf(stderr, "  --tokens    Dump token stream from lexical analysis\n");
+    fprintf(stderr, "  --ast       Dump Abstract Syntax Tree from syntax analysis\n");
+    fprintf(stderr, "  --ir        Dump Three-Address Code IR\n");
+    fprintf(stderr, "  --translate, --emit-c\n");
+    fprintf(stderr, "              Emit translated (re-compilable) C source\n");
+    fprintf(stderr, "  -o <file>   Write translated C to <file> instead of stdout\n");
 }
 
 int main(int argc, char **argv) {
@@ -22,9 +26,11 @@ int main(int argc, char **argv) {
     }
 
     const char *filename = NULL;
+    const char *output_path = NULL;
     bool dump_tokens = false;
     bool dump_ast = false;
     bool dump_ir = false;
+    bool dump_c = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--tokens") == 0) {
@@ -33,6 +39,17 @@ int main(int argc, char **argv) {
             dump_ast = true;
         } else if (strcmp(argv[i], "--ir") == 0) {
             dump_ir = true;
+        } else if (strcmp(argv[i], "--translate") == 0 ||
+                   strcmp(argv[i], "--emit-c") == 0 ||
+                   strcmp(argv[i], "--c") == 0) {
+            dump_c = true;
+        } else if (strcmp(argv[i], "-o") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: -o requires an output file argument.\n");
+                print_usage(argv[0]);
+                return 1;
+            }
+            output_path = argv[++i];
         } else if (argv[i][0] == '-') {
             fprintf(stderr, "Unknown flag: %s\n", argv[i]);
             print_usage(argv[0]);
@@ -48,8 +65,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (!dump_tokens && !dump_ast && !dump_ir) {
+    if (!dump_tokens && !dump_ast && !dump_ir && !dump_c) {
         dump_ir = true; // Default
+    }
+
+    if (output_path && !dump_c) {
+        fprintf(stderr, "Error: -o requires --translate/--emit-c.\n");
+        print_usage(argv[0]);
+        return 1;
     }
 
     g_filename = filename;
@@ -84,10 +107,23 @@ int main(int argc, char **argv) {
     }
 
     // Phase 4: IR Generation
-    IRProgram *ir = ir_generate(ast);
-
+    IRProgram *ir = NULL;
     if (dump_ir) {
+        ir = ir_generate(ast);
         ir_dump_program(ir);
+    }
+
+    // Phase 5: C Translation (source-to-source, semantics-preserving)
+    if (dump_c) {
+        if (output_path) {
+            if (codegen_emit_to_file(ast, output_path) != 0) {
+                fprintf(stderr, "Error: could not write to '%s'.\n", output_path);
+                free(source);
+                return 1;
+            }
+        } else {
+            codegen_emit_program(ast, stdout);
+        }
     }
 
     free(source);
