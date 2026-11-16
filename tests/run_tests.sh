@@ -85,7 +85,7 @@ rm -rf "$TMPDIR_T"
 echo -n "Test translation correctness [differential fib+loops]: "
 TMPDIR_T=$(mktemp -d)
 ok=1
-for case in fib loops floats nested; do
+for case in fib loops floats nested include; do
     "$TRCO" "tests/cases/$case.c" --translate -o "$TMPDIR_T/$case.tr.c" || ok=0
     gcc -std=c11 -Wall "$TMPDIR_T/$case.tr.c" -o "$TMPDIR_T/$case.tr" 2>/dev/null || ok=0
     gcc -std=c11 -Wno-implicit-function-declaration "tests/cases/$case.c" -o "$TMPDIR_T/$case.orig" 2>/dev/null || ok=0
