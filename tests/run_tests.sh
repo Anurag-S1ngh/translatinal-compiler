@@ -85,7 +85,7 @@ rm -rf "$TMPDIR_T"
 echo -n "Test translation correctness [differential fib+loops]: "
 TMPDIR_T=$(mktemp -d)
 ok=1
-for case in fib loops floats nested include; do
+for case in fib loops floats nested include deadstore; do
     "$TRCO" "tests/cases/$case.c" --translate -o "$TMPDIR_T/$case.tr.c" || ok=0
     gcc -std=c11 -Wall "$TMPDIR_T/$case.tr.c" -o "$TMPDIR_T/$case.tr" 2>/dev/null || ok=0
     gcc -std=c11 -Wno-implicit-function-declaration "tests/cases/$case.c" -o "$TMPDIR_T/$case.orig" 2>/dev/null || ok=0
@@ -174,6 +174,22 @@ if "$TRCO" --input tests/cases/fib.c tests/cases/loops.c --translate > /dev/null
 else
     echo "PASSED"
 fi
+
+# Test 13: dead-store elimination folds the initializer
+echo -n "Test dead-store elimination [folds initializer]: "
+TMPDIR_T=$(mktemp -d)
+if "$TRCO" tests/cases/deadstore.c --translate > "$TMPDIR_T/dead.c" \
+    && grep -q "int a = 10;" "$TMPDIR_T/dead.c" \
+    && ! grep -q "int a = 5;" "$TMPDIR_T/dead.c" \
+    && grep -q "int b = 1;" "$TMPDIR_T/dead.c" \
+    && gcc -std=c11 -Wall "$TMPDIR_T/dead.c" -o "$TMPDIR_T/dead" \
+    && "$TMPDIR_T/dead" | grep -q "a=10 b=2"; then
+    echo "PASSED"
+else
+    echo "FAILED"
+    failed=$((failed + 1))
+fi
+rm -rf "$TMPDIR_T"
 
 if [ $failed -eq 0 ]; then
     echo "All tests passed successfully!"
