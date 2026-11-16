@@ -377,6 +377,99 @@ static void dump_stmt(ASTStmt *stmt, int indent) {
     }
 }
 
+// AST Freeing
+static void free_expr(ASTExpr *expr) {
+    if (!expr) return;
+    switch (expr->kind) {
+        case EXPR_STR_LIT:
+            free(expr->str_val);
+            break;
+        case EXPR_VAR:
+            free(expr->var_name);
+            break;
+        case EXPR_UNARY:
+            free_expr(expr->unary.operand);
+            break;
+        case EXPR_BINARY:
+            free_expr(expr->binary.left);
+            free_expr(expr->binary.right);
+            break;
+        case EXPR_ASSIGN:
+            free(expr->assign.var_name);
+            free_expr(expr->assign.value);
+            break;
+        case EXPR_CALL:
+            free(expr->call.func_name);
+            for (int i = 0; i < expr->call.arg_count; i++) {
+                free_expr(expr->call.args[i]);
+            }
+            free(expr->call.args);
+            break;
+        case EXPR_CAST:
+            free_expr(expr->cast.expr);
+            break;
+        default:
+            break;
+    }
+    free(expr);
+}
+
+static void free_stmt(ASTStmt *stmt) {
+    if (!stmt) return;
+    switch (stmt->kind) {
+        case STMT_DECL:
+            free(stmt->decl.var_name);
+            free_expr(stmt->decl.init);
+            break;
+        case STMT_EXPR:
+            free_expr(stmt->expr);
+            break;
+        case STMT_BLOCK:
+            for (int i = 0; i < stmt->block.stmt_count; i++) {
+                free_stmt(stmt->block.stmts[i]);
+            }
+            free(stmt->block.stmts);
+            break;
+        case STMT_IF:
+            free_expr(stmt->if_stmt.cond);
+            free_stmt(stmt->if_stmt.then_branch);
+            free_stmt(stmt->if_stmt.else_branch);
+            break;
+        case STMT_WHILE:
+            free_expr(stmt->while_stmt.cond);
+            free_stmt(stmt->while_stmt.body);
+            break;
+        case STMT_FOR:
+            free_stmt(stmt->for_stmt.init);
+            free_expr(stmt->for_stmt.cond);
+            free_expr(stmt->for_stmt.step);
+            free_stmt(stmt->for_stmt.body);
+            break;
+        case STMT_RETURN:
+            free_expr(stmt->return_stmt.value);
+            break;
+        default:
+            break;
+    }
+    free(stmt);
+}
+
+void ast_free_program(ASTProgram *prog) {
+    if (!prog) return;
+    for (int i = 0; i < prog->function_count; i++) {
+        ASTFunction *fn = prog->functions[i];
+        free(fn->name);
+        for (int p = 0; p < fn->param_count; p++) {
+            free(fn->params[p].name);
+        }
+        free(fn->params);
+        free_stmt(fn->body);
+        free(fn);
+    }
+    free(prog->functions);
+    free(prog);
+}
+
 void ast_dump_program(ASTProgram *prog) {
     printf("=== AST DUMP ===\n");
     if (!prog) return;

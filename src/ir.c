@@ -10,6 +10,13 @@ typedef struct LoopContext {
     struct LoopContext *parent;
 } LoopContext;
 
+// Ownership convention: constructors (ir_op_*) hand ownership to the caller;
+// emit_quad() takes ownership of the operands it stores in the quad.
+// Any operand that is created but intentionally discarded must be released
+// with ir_op_free().
+static void ir_op_free(IROperand *op);
+static IROperand ir_op_dup(IROperand op);
+
 typedef struct {
     IRFunc *current_func;
     int next_temp;
@@ -76,6 +83,24 @@ IROperand ir_op_label(int label_id) {
     return op;
 }
 
+// Deep copy of an operand; used when the same value is needed twice.
+static IROperand ir_op_dup(IROperand op) {
+    IROperand dup = op;
+    switch (op.kind) {
+        case OPERAND_VAR:
+        case OPERAND_TEMP:
+        case OPERAND_LABEL:
+            dup.name = xstrdup(op.name);
+            break;
+        case OPERAND_STR_LIT:
+            dup.str_val = xstrdup(op.str_val);
+            break;
+        default:
+            break;
+    }
+    return dup;
+}
+
 static IROperand new_temp(IRGenerator *gen) {
     return ir_op_temp(gen->next_temp++);
 }
@@ -118,33 +143,34 @@ static IROperand gen_expr(IRGenerator *gen, ASTExpr *expr) {
         case EXPR_CAST: {
             IROperand sub = gen_expr(gen, expr->cast.expr);
             IROperand res = new_temp(gen);
+            IROperand out = ir_op_dup(res);
             if (expr->cast.target_type == TYPE_FLOAT) {
                 emit_quad(gen, IR_CAST_INT_TO_FLOAT, sub, ir_op_none(), res);
             } else {
                 emit_quad(gen, IR_CAST_FLOAT_TO_INT, sub, ir_op_none(), res);
             }
-            return res;
+            return out;
         }
         case EXPR_UNARY: {
             if (expr->unary.op == UNARY_PRE_INC || expr->unary.op == UNARY_PRE_DEC) {
-                IROperand var = ir_op_var(expr->unary.operand->var_name);
                 IROpcode op = (expr->unary.op == UNARY_PRE_INC) ? IR_ADD : IR_SUB;
-                emit_quad(gen, op, var, ir_op_int(1), var);
-                return var;
+                emit_quad(gen, op, ir_op_var(expr->unary.operand->var_name), ir_op_int(1), ir_op_var(expr->unary.operand->var_name));
+                return ir_op_var(expr->unary.operand->var_name);
             }
             if (expr->unary.op == UNARY_POST_INC || expr->unary.op == UNARY_POST_DEC) {
-                IROperand var = ir_op_var(expr->unary.operand->var_name);
-                IROperand temp = new_temp(gen);
-                emit_quad(gen, IR_ASSIGN, var, ir_op_none(), temp);
                 IROpcode op = (expr->unary.op == UNARY_POST_INC) ? IR_ADD : IR_SUB;
-                emit_quad(gen, op, var, ir_op_int(1), var);
-                return temp;
+                IROperand temp = new_temp(gen);
+                IROperand ret = ir_op_dup(temp);
+                emit_quad(gen, IR_ASSIGN, ir_op_var(expr->unary.operand->var_name), ir_op_none(), temp);
+                emit_quad(gen, op, ir_op_var(expr->unary.operand->var_name), ir_op_int(1), ir_op_var(expr->unary.operand->var_name));
+                return ret;
             }
             IROperand sub = gen_expr(gen, expr->unary.operand);
             IROperand res = new_temp(gen);
+            IROperand out = ir_op_dup(res);
             IROpcode op = (expr->unary.op == UNARY_NEG) ? IR_NEG : IR_NOT;
             emit_quad(gen, op, sub, ir_op_none(), res);
-            return res;
+            return out;
         }
         case EXPR_BINARY: {
             // Short circuit logic for && and ||
@@ -159,11 +185,11 @@ static IROperand gen_expr(IRGenerator *gen, ASTExpr *expr) {
                 IROperand right = gen_expr(gen, expr->binary.right);
                 emit_quad(gen, IR_JUMP_IF_ZERO, right, ir_op_none(), ir_op_label(false_label));
 
-                emit_quad(gen, IR_ASSIGN, ir_op_int(1), ir_op_none(), res);
+                emit_quad(gen, IR_ASSIGN, ir_op_int(1), ir_op_none(), ir_op_dup(res));
                 emit_quad(gen, IR_JUMP, ir_op_label(end_label), ir_op_none(), ir_op_none());
 
                 emit_quad(gen, IR_LABEL, ir_op_label(false_label), ir_op_none(), ir_op_none());
-                emit_quad(gen, IR_ASSIGN, ir_op_int(0), ir_op_none(), res);
+                emit_quad(gen, IR_ASSIGN, ir_op_int(0), ir_op_none(), ir_op_dup(res));
 
                 emit_quad(gen, IR_LABEL, ir_op_label(end_label), ir_op_none(), ir_op_none());
                 return res;
@@ -179,11 +205,11 @@ static IROperand gen_expr(IRGenerator *gen, ASTExpr *expr) {
                 IROperand right = gen_expr(gen, expr->binary.right);
                 emit_quad(gen, IR_JUMP_IF_NZERO, right, ir_op_none(), ir_op_label(true_label));
 
-                emit_quad(gen, IR_ASSIGN, ir_op_int(0), ir_op_none(), res);
+                emit_quad(gen, IR_ASSIGN, ir_op_int(0), ir_op_none(), ir_op_dup(res));
                 emit_quad(gen, IR_JUMP, ir_op_label(end_label), ir_op_none(), ir_op_none());
 
                 emit_quad(gen, IR_LABEL, ir_op_label(true_label), ir_op_none(), ir_op_none());
-                emit_quad(gen, IR_ASSIGN, ir_op_int(1), ir_op_none(), res);
+                emit_quad(gen, IR_ASSIGN, ir_op_int(1), ir_op_none(), ir_op_dup(res));
 
                 emit_quad(gen, IR_LABEL, ir_op_label(end_label), ir_op_none(), ir_op_none());
                 return res;
@@ -193,6 +219,7 @@ static IROperand gen_expr(IRGenerator *gen, ASTExpr *expr) {
             IROperand right = gen_expr(gen, expr->binary.right);
             IROperand res = new_temp(gen);
 
+            IROperand out = ir_op_dup(res);
             IROpcode op = IR_ADD;
             switch (expr->binary.op) {
                 case BIN_ADD: op = IR_ADD; break;
@@ -209,13 +236,12 @@ static IROperand gen_expr(IRGenerator *gen, ASTExpr *expr) {
                 default: break;
             }
             emit_quad(gen, op, left, right, res);
-            return res;
+            return out;
         }
         case EXPR_ASSIGN: {
             IROperand val = gen_expr(gen, expr->assign.value);
-            IROperand var = ir_op_var(expr->assign.var_name);
-            emit_quad(gen, IR_ASSIGN, val, ir_op_none(), var);
-            return var;
+            emit_quad(gen, IR_ASSIGN, val, ir_op_none(), ir_op_var(expr->assign.var_name));
+            return ir_op_var(expr->assign.var_name);
         }
         case EXPR_CALL: {
             IROperand *args = xmalloc(sizeof(IROperand) * expr->call.arg_count);
@@ -228,8 +254,9 @@ static IROperand gen_expr(IRGenerator *gen, ASTExpr *expr) {
             free(args);
 
             IROperand res = new_temp(gen);
+            IROperand out = ir_op_dup(res);
             emit_quad(gen, IR_CALL, ir_op_var(expr->call.func_name), ir_op_int(expr->call.arg_count), res);
-            return res;
+            return out;
         }
     }
     return ir_op_none();
@@ -246,9 +273,11 @@ static void gen_stmt(IRGenerator *gen, ASTStmt *stmt) {
             }
             break;
         }
-        case STMT_EXPR:
-            gen_expr(gen, stmt->expr);
+        case STMT_EXPR: {
+            IROperand result = gen_expr(gen, stmt->expr);
+            ir_op_free(&result);
             break;
+        }
         case STMT_BLOCK:
             for (int i = 0; i < stmt->block.stmt_count; i++) {
                 gen_stmt(gen, stmt->block.stmts[i]);
@@ -318,7 +347,8 @@ static void gen_stmt(IRGenerator *gen, ASTStmt *stmt) {
 
             emit_quad(gen, IR_LABEL, ir_op_label(step_label), ir_op_none(), ir_op_none());
             if (stmt->for_stmt.step) {
-                gen_expr(gen, stmt->for_stmt.step);
+                IROperand step = gen_expr(gen, stmt->for_stmt.step);
+                ir_op_free(&step);
             }
             emit_quad(gen, IR_JUMP, ir_op_label(start_label), ir_op_none(), ir_op_none());
 
@@ -485,4 +515,37 @@ void ir_dump_program(IRProgram *prog) {
             }
         }
     }
+}
+
+// IR Freeing
+static void ir_op_free(IROperand *op) {
+    switch (op->kind) {
+        case OPERAND_VAR:
+        case OPERAND_TEMP:
+        case OPERAND_LABEL:
+            free(op->name);
+            break;
+        case OPERAND_STR_LIT:
+            free(op->str_val);
+            break;
+        default:
+            break;
+    }
+}
+
+void ir_free_program(IRProgram *prog) {
+    if (!prog) return;
+    for (int i = 0; i < prog->func_count; i++) {
+        IRFunc *f = prog->funcs[i];
+        free(f->name);
+        for (int q = 0; q < f->quad_count; q++) {
+            ir_op_free(&f->quads[q].arg1);
+            ir_op_free(&f->quads[q].arg2);
+            ir_op_free(&f->quads[q].result);
+        }
+        free(f->quads);
+        free(f);
+    }
+    free(prog->funcs);
+    free(prog);
 }
