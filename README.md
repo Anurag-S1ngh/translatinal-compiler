@@ -21,18 +21,23 @@ make clean       # Removes object files and binary
 ## Usage
 
 ```bash
-trco <input_file.c|-> [--tokens|--ast|--ir|--translate|--emit-c|--c] [-o <output.c>]
+# Simplest form — translate a.c into re-compilable o.c:
+trco --input a.c --output o.c
+
+# Full form:
+trco [--input <source.c|-> | <source.c|->] [--tokens|--ast|--ir|--translate|--emit-c|--c] [--output|-o <target.c>]
 ```
 
 trco takes a **source file** as input and writes either a phase dump or a **target file** of translated, re-compilable C. Use `-` as the input file to read the source from standard input.
 
 | Flag      | Description                              |
 |-----------|------------------------------------------|
+| `--input <file>` | Source C file to read (`-` reads stdin). May also be given as the bare argument |
+| `--output <file>`, `-o <file>` | Write the translated, re-compilable C to `<file>` (implies `--translate`) |
 | `--tokens`| Dump the token stream from lexical analysis |
 | `--ast`   | Dump the Abstract Syntax Tree            |
 | `--ir`    | Dump Three-Address Code IR *(default)*   |
 | `--translate`, `--emit-c`, `--c` | Emit translated, re-compilable C source |
-| `-o <file>` | Write translated C to `<file>` instead of stdout (requires `--translate`) |
 
 If no flag is provided, the compiler runs the full pipeline (lex → parse → sema → IR) and emits the IR dump.
 
@@ -58,7 +63,7 @@ trco tests/cases/fib.c --tokens --ast --ir
 trco tests/cases/fib.c --translate
 
 # Translate source.c to a target file, then recompile with gcc
-trco tests/cases/fib.c --translate -o fib.out.c
+trco --input tests/cases/fib.c --output fib.out.c
 gcc -std=c11 -Wall fib.out.c -o fib.out
 ./fib.out
 ```
@@ -155,7 +160,7 @@ Type checking covers `int`, `float`, `char` and `void`, with implicit `int`↔`f
 - **`trco: Command not found`**: Ensure you have run `make` or are in the project directory
 - **Unknown flag errors**: Use `trco` without flags or with `--tokens|--ast|--ir|--translate`
 - **Semantic errors**: Verify variable declarations, type consistency, and that `main()` exists
-- **`-o` without `--translate`**: `-o <file>` only applies to translated-C output; add `--translate`/`--emit-c`
+- **`-o` / `--output` writes translated C directly**: It implies `--translate`, so `trco a.c -o o.c` works without any other flag
 
 ---
 
