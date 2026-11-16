@@ -90,6 +90,7 @@ The project includes test programs under `tests/cases/`:
 | `loops.c`     | `while`, `for`, `continue`, `break`              |
 | `floats.c`    | `float` arithmetic, `char` variables, mixed `int`/`float` expressions |
 | `nested.c`    | Nested `for`/`while` loops with `break`/`continue` |
+| `include.c`   | `#include` directive — directives are skipped      |
 | `undeclared.c`| Expected to fail semantic analysis               |
 
 Run `make test` to execute the full test suite.
@@ -148,7 +149,7 @@ trco deliberately implements a **practical subset** of C, not the full language.
 - Pointers, arrays, and the `&`/`*` operators
 - `struct`, `union`, `enum`, `typedef`
 - Global/static variables — top-level code must be functions
-- The preprocessor (`#include`, `#define`, ...) — test programs call `printf` without a header, relying on the same implicit-declaration convention as the translation pipeline
+- **The preprocessor** (`#include`, `#define`, ...) is not implemented — lines starting with `#` are **skipped**, never expanded. `#include` headers are ignored (translated output emits the `#include <stdio.h>` it needs on its own); macros are **not** expanded, so `#define`d names will surface as undeclared-variable errors. `#include`-less test programs call `printf` relying on the implicit-declaration convention
 - The ternary operator, `switch`, `do/while`, `goto`, `sizeof`
 - Compound assignment operators (`+=`, `-=`, ...)
 - Forward function declarations/prototypes — functions must be defined before use in the order accepted by the parser
