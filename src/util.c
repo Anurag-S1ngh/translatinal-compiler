@@ -87,6 +87,28 @@ char *read_file(const char *filename) {
     return buffer;
 }
 
+char *read_stdin(void) {
+    size_t capacity = 4096;
+    size_t length = 0;
+    char *buffer = xmalloc(capacity + 1);
+    char chunk[4096];
+
+    for (;;) {
+        size_t n = fread(chunk, 1, sizeof(chunk), stdin);
+        if (n == 0) {
+            break;
+        }
+        while (length + n > capacity) {
+            capacity *= 2;
+        }
+        buffer = xrealloc(buffer, capacity + 1);
+        memcpy(buffer + length, chunk, n);
+        length += n;
+    }
+    buffer[length] = '\0';
+    return buffer;
+}
+
 void error_at(int line, int col, const char *fmt, ...) {
     g_had_error = true;
     fprintf(stderr, "%s:%d:%d: error: ", g_filename, line, col);

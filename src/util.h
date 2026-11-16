@@ -19,6 +19,7 @@ void strbuf_free(StrBuf *buf);
 
 // File I/O
 char *read_file(const char *filename);
+char *read_stdin(void);
 
 // Error Handling & Diagnostics
 extern bool g_had_error;
