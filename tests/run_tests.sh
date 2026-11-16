@@ -85,7 +85,7 @@ rm -rf "$TMPDIR_T"
 echo -n "Test translation correctness [differential fib+loops]: "
 TMPDIR_T=$(mktemp -d)
 ok=1
-for case in fib loops; do
+for case in fib loops floats nested; do
     "$TRCO" "tests/cases/$case.c" --translate -o "$TMPDIR_T/$case.tr.c" || ok=0
     gcc -std=c11 -Wall "$TMPDIR_T/$case.tr.c" -o "$TMPDIR_T/$case.tr" 2>/dev/null || ok=0
     gcc -std=c11 -Wno-implicit-function-declaration "tests/cases/$case.c" -o "$TMPDIR_T/$case.orig" 2>/dev/null || ok=0
@@ -109,6 +109,48 @@ if "$TRCO" tests/cases/undeclared.c --translate > /dev/null 2>&1; then
 else
     echo "PASSED"
 fi
+
+# Test 8: stdin input ('-') produces the same translation as a file
+echo -n "Test stdin input [- reads source from stdin]: "
+TMPDIR_T=$(mktemp -d)
+if "$TRCO" - --translate < tests/cases/fib.c > "$TMPDIR_T/stdin.c" \
+    && "$TRCO" tests/cases/fib.c --translate > "$TMPDIR_T/file.c" \
+    && diff "$TMPDIR_T/stdin.c" "$TMPDIR_T/file.c" > /dev/null; then
+    echo "PASSED"
+else
+    echo "FAILED"
+    failed=$((failed + 1))
+fi
+rm -rf "$TMPDIR_T"
+
+# Test 9: -o writes a non-empty, re-compilable target file
+echo -n "Test -o writes re-compilable target file: "
+TMPDIR_T=$(mktemp -d)
+if "$TRCO" tests/cases/loops.c --translate -o "$TMPDIR_T/loops.target.c" \
+    && [ -s "$TMPDIR_T/loops.target.c" ] \
+    && gcc -std=c11 -Wall "$TMPDIR_T/loops.target.c" -o "$TMPDIR_T/loops.target" \
+    && "$TMPDIR_T/loops.target" | grep -q "sum = 23, product = 120"; then
+    echo "PASSED"
+else
+    echo "FAILED"
+    failed=$((failed + 1))
+fi
+rm -rf "$TMPDIR_T"
+
+# Test 10: --emit-c and --c aliases produce the same output as --translate
+echo -n "Test --emit-c/--c aliases: "
+TMPDIR_T=$(mktemp -d)
+if "$TRCO" tests/cases/fib.c --emit-c > "$TMPDIR_T/emit.c" \
+    && "$TRCO" tests/cases/fib.c --c > "$TMPDIR_T/c.c" \
+    && "$TRCO" tests/cases/fib.c --translate > "$TMPDIR_T/translate.c" \
+    && diff "$TMPDIR_T/emit.c" "$TMPDIR_T/translate.c" > /dev/null \
+    && diff "$TMPDIR_T/c.c" "$TMPDIR_T/translate.c" > /dev/null; then
+    echo "PASSED"
+else
+    echo "FAILED"
+    failed=$((failed + 1))
+fi
+rm -rf "$TMPDIR_T"
 
 if [ $failed -eq 0 ]; then
     echo "All tests passed successfully!"
