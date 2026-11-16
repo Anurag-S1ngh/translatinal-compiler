@@ -1,17 +1,6 @@
-# Dependencies
-node_modules/
-dist/
-build/
-out/
+# Build artifacts
 *.o
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Logs
-*.log
+trco
 
 # OS
 .DS_Store
@@ -20,10 +9,3 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
-
-# Production
-npm ci
-pnpm-lock.yaml
-yarn.lock
-
-trco
