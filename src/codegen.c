@@ -71,9 +71,20 @@ static void emit_escaped_char(FILE *out, char c) {
     fputc('\'', out);
 }
 
-static void emit_expr(FILE *out, ASTExpr *e);
+// `top` is true only for an expression emitted directly in a
+// parenthesized context position (if/while/for condition), where adding
+// redundant outer parentheses would trip -Wparentheses-equality.
+static void emit_expr_impl(FILE *out, ASTExpr *e, bool top);
 
 static void emit_expr(FILE *out, ASTExpr *e) {
+    emit_expr_impl(out, e, false);
+}
+
+static void emit_expr_top(FILE *out, ASTExpr *e) {
+    emit_expr_impl(out, e, true);
+}
+
+static void emit_expr_impl(FILE *out, ASTExpr *e, bool top) {
     if (!e) return;
     switch (e->kind) {
         case EXPR_INT_LIT:
@@ -94,27 +105,27 @@ static void emit_expr(FILE *out, ASTExpr *e) {
             break;
         case EXPR_UNARY:
             switch (e->unary.op) {
-                case UNARY_NEG: fputs("(-", out); emit_expr(out, e->unary.operand); fputc(')', out); break;
-                case UNARY_NOT: fputs("(!", out); emit_expr(out, e->unary.operand); fputc(')', out); break;
-                case UNARY_PRE_INC: fputs("(++", out); emit_expr(out, e->unary.operand); fputc(')', out); break;
-                case UNARY_PRE_DEC: fputs("(--", out); emit_expr(out, e->unary.operand); fputc(')', out); break;
-                case UNARY_POST_INC: fputc('(', out); emit_expr(out, e->unary.operand); fputs("++)", out); break;
-                case UNARY_POST_DEC: fputc('(', out); emit_expr(out, e->unary.operand); fputs("--)", out); break;
+                case UNARY_NEG: if (!top) fputc('(', out); fputs("-", out); emit_expr(out, e->unary.operand); if (!top) fputc(')', out); break;
+                case UNARY_NOT: if (!top) fputc('(', out); fputs("!", out); emit_expr(out, e->unary.operand); if (!top) fputc(')', out); break;
+                case UNARY_PRE_INC: if (!top) fputc('(', out); fputs("++", out); emit_expr(out, e->unary.operand); if (!top) fputc(')', out); break;
+                case UNARY_PRE_DEC: if (!top) fputc('(', out); fputs("--", out); emit_expr(out, e->unary.operand); if (!top) fputc(')', out); break;
+                case UNARY_POST_INC: if (!top) fputc('(', out); emit_expr(out, e->unary.operand); fputs("++", out); if (!top) fputc(')', out); break;
+                case UNARY_POST_DEC: if (!top) fputc('(', out); emit_expr(out, e->unary.operand); fputs("--", out); if (!top) fputc(')', out); break;
             }
             break;
         case EXPR_BINARY:
             // Fully parenthesized: immune to precedence/associativity mistakes.
             // && and || keep short-circuit semantics in the target C compiler.
-            fputc('(', out);
+            if (!top) fputc('(', out);
             emit_expr(out, e->binary.left);
             fprintf(out, " %s ", bin_op_text(e->binary.op));
             emit_expr(out, e->binary.right);
-            fputc(')', out);
+            if (!top) fputc(')', out);
             break;
         case EXPR_ASSIGN:
-            fprintf(out, "(%s = ", e->assign.var_name);
+            if (!top) fprintf(out, "(%s = ", e->assign.var_name); else fprintf(out, "%s = ", e->assign.var_name);
             emit_expr(out, e->assign.value);
-            fputc(')', out);
+            if (!top) fputc(')', out);
             break;
         case EXPR_CALL:
             fputs(e->call.func_name, out);
@@ -126,9 +137,9 @@ static void emit_expr(FILE *out, ASTExpr *e) {
             fputc(')', out);
             break;
         case EXPR_CAST:
-            fprintf(out, "((%s)", data_type_to_string(e->cast.target_type));
+            if (!top) fprintf(out, "((%s)", data_type_to_string(e->cast.target_type)); else fprintf(out, "(%s)", data_type_to_string(e->cast.target_type));
             emit_expr(out, e->cast.expr);
-            fputc(')', out);
+            if (!top) fputc(')', out);
             break;
     }
 }
@@ -194,7 +205,7 @@ static void emit_stmt(FILE *out, ASTStmt *s, int indent) {
             break;
         case STMT_IF:
             fputs("if (", out);
-            emit_expr(out, s->if_stmt.cond);
+            emit_expr_top(out, s->if_stmt.cond);
             fputc(')', out);
             emit_block_inline(out, s->if_stmt.then_branch, indent);
             if (s->if_stmt.else_branch) {
@@ -205,7 +216,7 @@ static void emit_stmt(FILE *out, ASTStmt *s, int indent) {
             break;
         case STMT_WHILE:
             fputs("while (", out);
-            emit_expr(out, s->while_stmt.cond);
+            emit_expr_top(out, s->while_stmt.cond);
             fputc(')', out);
             emit_block_inline(out, s->while_stmt.body, indent);
             fputc('\n', out);
@@ -214,7 +225,7 @@ static void emit_stmt(FILE *out, ASTStmt *s, int indent) {
             fputs("for (", out);
             emit_for_init(out, s->for_stmt.init);
             fputs("; ", out);
-            if (s->for_stmt.cond) emit_expr(out, s->for_stmt.cond);
+            if (s->for_stmt.cond) emit_expr_top(out, s->for_stmt.cond);
             fputs("; ", out);
             if (s->for_stmt.step) emit_expr(out, s->for_stmt.step);
             fputc(')', out);
