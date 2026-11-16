@@ -21,10 +21,10 @@ make clean       # Removes object files and binary
 ## Usage
 
 ```bash
-trco <input_file.c> [--tokens|--ast|--ir|--translate|--emit-c] [-o <output.c>]
+trco <input_file.c|-> [--tokens|--ast|--ir|--translate|--emit-c|--c] [-o <output.c>]
 ```
 
-### Flags
+trco takes a **source file** as input and writes either a phase dump or a **target file** of translated, re-compilable C. Use `-` as the input file to read the source from standard input.
 
 | Flag      | Description                              |
 |-----------|------------------------------------------|
@@ -42,6 +42,9 @@ If no flag is provided, the compiler runs the full pipeline (lex → parse → s
 # Compile fib.c with default IR dump
 trco tests/cases/fib.c --ir
 
+# Read the source from stdin
+trco - --ir < tests/cases/fib.c
+
 # Show tokens only
 trco tests/cases/fib.c --tokens
 
@@ -54,7 +57,7 @@ trco tests/cases/fib.c --tokens --ast --ir
 # Translate to clean C on stdout
 trco tests/cases/fib.c --translate
 
-# Translate to a file, then recompile with gcc
+# Translate source.c to a target file, then recompile with gcc
 trco tests/cases/fib.c --translate -o fib.out.c
 gcc -std=c11 -Wall fib.out.c -o fib.out
 ./fib.out
@@ -76,11 +79,13 @@ trco handles a practical subset of C including:
 
 The project includes test programs under `tests/cases/`:
 
-| Test Case   | Description                              |
-|-------------|------------------------------------------|
-| `fib.c`     | Recursive Fibonacci function             |
-| `loops.c`   | `while`, `for`, `continue`, `break`      |
-| `undeclared.c` | Expected to fail semantic analysis   |
+| Test Case     | Description                                      |
+|---------------|--------------------------------------------------|
+| `fib.c`       | Recursive Fibonacci function                     |
+| `loops.c`     | `while`, `for`, `continue`, `break`              |
+| `floats.c`    | `float` arithmetic, `char` variables, mixed `int`/`float` expressions |
+| `nested.c`    | Nested `for`/`while` loops with `break`/`continue` |
+| `undeclared.c`| Expected to fail semantic analysis               |
 
 Run `make test` to execute the full test suite.
 
@@ -92,11 +97,18 @@ The emitted IR is correct Three-Address Code, and `--translate` emits standalone
 # Example IR output (abbreviated)
 === THREE-ADDRESS CODE IR ===
 
-FUNC main:
-  L0:
-    %t0 = call i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @.str, i64 0, i64 0), i32 %t1)
-  L1:
-    ret void
+FUNC fib:
+  %t0 = n <= 1
+  ifz %t0 goto .L0
+  return n
+  goto .L1
+.L0:
+.L1:
+  %t1 = n - 1
+  param %t1
+  %t2 = call fib, 1
+  ...
+END FUNC fib
 ```
 
 ## Translation & Compiler Correctness
@@ -109,7 +121,7 @@ implicit-cast insertion) back to C. Correctness properties:
 - **Short-circuit preserved**: `&&` / `||` are emitted as-is, keeping lazy evaluation (including side-effect ordering).
 - **Types preserved**: `int`/`float`/`char`/`void` signatures, declarations, and sema-inserted `(float)`/`(int)` casts are emitted explicitly.
 - **Literals safe**: strings/chars are re-escaped; `for (;;)` / empty clauses round-trip; single statements are wrapped in braces to avoid dangling-`else` ambiguity.
-- **Self-contained output**: `#include <stdio.h>` is prepended and nullary `()` becomes `(void)`, so `gcc -std=c11 -Wall` accepts the output cleanly.
+- **Self-contained output**: `#include <stdio.h>` is prepended and nullary `()` becomes `(void)`, so `gcc`/`clang` with `-std=c11 -Wall -Wextra` accept the output cleanly.
 
 Verify equivalence (differential testing) — the translated program must print byte-identical output to the original:
 
@@ -120,7 +132,23 @@ gcc -std=c11 -Wno-implicit-function-declaration tests/cases/fib.c -o /tmp/fib.or
 diff <(/tmp/fib.orig) <(/tmp/fib.tr) && echo CORRECT
 ```
 
-`make test` runs this differential check automatically for `fib.c` and `loops.c`, plus recompile checks and the `undeclared.c` must-fail case.
+`make test` runs this differential check automatically for `fib.c`, `loops.c`, `floats.c` and `nested.c`, plus recompile checks, the `-o` target-file path, stdin input, the `--emit-c`/`--c` aliases, and the `undeclared.c` must-fail case. The translated output compiles warning-free under `gcc -std=c11 -Wall -Wextra` and `clang -std=c11 -Wall -Wextra`.
+
+The project also ships a GitHub Actions workflow (`.github/workflows/ci.yml`) that builds `trco`, runs the test suite, and recompiles every translation on each push and pull request.
+
+## Limitations
+
+trco deliberately implements a **practical subset** of C, not the full language. Unsupported features include:
+
+- Pointers, arrays, and the `&`/`*` operators
+- `struct`, `union`, `enum`, `typedef`
+- Global/static variables — top-level code must be functions
+- The preprocessor (`#include`, `#define`, ...) — test programs call `printf` without a header, relying on the same implicit-declaration convention as the translation pipeline
+- The ternary operator, `switch`, `do/while`, `goto`, `sizeof`
+- Compound assignment operators (`+=`, `-=`, ...)
+- Forward function declarations/prototypes — functions must be defined before use in the order accepted by the parser
+
+Type checking covers `int`, `float`, `char` and `void`, with implicit `int`↔`float` conversions inserted during semantic analysis.
 
 ## Troubleshooting
 
