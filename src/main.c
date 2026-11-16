@@ -7,6 +7,7 @@
 #include "sema.h"
 #include "ir.h"
 #include "codegen.h"
+#include "opt.h"
 
 static void print_usage(const char *prog_name) {
     fprintf(stderr, "Usage: %s [options] [source.c|-]\n", prog_name);
@@ -126,6 +127,9 @@ int main(int argc, char **argv) {
         free(source);
         return 1;
     }
+
+    // Phase 3.5: Dead-store elimination on straight-line local assignments
+    optimize_program(ast);
 
     // Phase 4: IR Generation
     IRProgram *ir = NULL;

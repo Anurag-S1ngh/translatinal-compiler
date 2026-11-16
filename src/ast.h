@@ -192,5 +192,7 @@ void ast_program_add_func(ASTProgram *prog, ASTFunction *func);
 
 void ast_dump_program(ASTProgram *prog);
 void ast_free_program(ASTProgram *prog);
+void ast_expr_free(ASTExpr *expr);
+void ast_stmt_free(ASTStmt *stmt);
 
 #endif // TRCO_AST_H
