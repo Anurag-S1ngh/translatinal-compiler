@@ -152,6 +152,29 @@ else
 fi
 rm -rf "$TMPDIR_T"
 
+# Test 11: the simple form — --input a.c --output o.c translates and recompiles
+echo -n "Test simple form [--input a.c --output o.c]: "
+TMPDIR_T=$(mktemp -d)
+if "$TRCO" --input tests/cases/loops.c --output "$TMPDIR_T/out.c" \
+    && [ -s "$TMPDIR_T/out.c" ] \
+    && gcc -std=c11 -Wall "$TMPDIR_T/out.c" -o "$TMPDIR_T/out" \
+    && "$TMPDIR_T/out" | grep -q "sum = 23, product = 120"; then
+    echo "PASSED"
+else
+    echo "FAILED"
+    failed=$((failed + 1))
+fi
+rm -rf "$TMPDIR_T"
+
+# Test 12: conflicting input specifications are rejected
+echo -n "Test input conflict [--input + positional] fails: "
+if "$TRCO" --input tests/cases/fib.c tests/cases/loops.c --translate > /dev/null 2>&1; then
+    echo "FAILED (expected failure)"
+    failed=$((failed + 1))
+else
+    echo "PASSED"
+fi
+
 if [ $failed -eq 0 ]; then
     echo "All tests passed successfully!"
     exit 0
