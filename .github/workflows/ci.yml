@@ -1,0 +1,21 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: make
+
+      - name: Test
+        run: make test
+
+      - name: Translated output compiles warning-free
+        run: |
+          for f in fib loops floats nested; do
+            ./trco tests/cases/$f.c --translate -o /tmp/$f.tr.c
+            gcc -std=c11 -Wall -Wextra /tmp/$f.tr.c -o /tmp/$f.tr
+          done
