@@ -9,15 +9,19 @@
 #include "codegen.h"
 
 static void print_usage(const char *prog_name) {
-    fprintf(stderr, "Usage: %s <input_file.c|-> [--tokens|--ast|--ir|--translate|--emit-c|--c] [-o <output.c>]\n", prog_name);
+    fprintf(stderr, "Usage: %s [options] [source.c|-]\n", prog_name);
+    fprintf(stderr, "\nSimplest form — translate a.c into re-compilable o.c:\n");
+    fprintf(stderr, "  %s --input a.c --output o.c\n\n", prog_name);
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  --tokens    Dump token stream from lexical analysis\n");
-    fprintf(stderr, "  --ast       Dump Abstract Syntax Tree from syntax analysis\n");
-    fprintf(stderr, "  --ir        Dump Three-Address Code IR\n");
+    fprintf(stderr, "  --input <file>   Source C file to compile ('-' reads stdin)\n");
+    fprintf(stderr, "  --output <file>  Write the translated, re-compilable C to <file> (implies --translate)\n");
+    fprintf(stderr, "  -o <file>        Alias for --output\n");
+    fprintf(stderr, "  --tokens         Dump token stream from lexical analysis\n");
+    fprintf(stderr, "  --ast            Dump Abstract Syntax Tree from syntax analysis\n");
+    fprintf(stderr, "  --ir             Dump Three-Address Code IR\n");
     fprintf(stderr, "  --translate, --emit-c, --c\n");
-    fprintf(stderr, "              Emit translated (re-compilable) C source\n");
-    fprintf(stderr, "  -o <file>   Write translated C to <file> instead of stdout (requires --translate/--emit-c/--c)\n");
-    fprintf(stderr, "\nUse '-' as the input file to read the source from standard input.\n");
+    fprintf(stderr, "                   Emit translated (re-compilable) C source\n");
+    fprintf(stderr, "\nInput may also be given as the bare argument or as '-' to read stdin.\n");
 }
 
 int main(int argc, char **argv) {
@@ -27,6 +31,8 @@ int main(int argc, char **argv) {
     }
 
     const char *filename = NULL;
+    const char *input_flag = NULL;
+    const char *positional = NULL;
     const char *output_path = NULL;
     bool dump_tokens = false;
     bool dump_ast = false;
@@ -44,23 +50,38 @@ int main(int argc, char **argv) {
                    strcmp(argv[i], "--emit-c") == 0 ||
                    strcmp(argv[i], "--c") == 0) {
             dump_c = true;
-        } else if (strcmp(argv[i], "-o") == 0) {
+        } else if (strcmp(argv[i], "--input") == 0) {
             if (i + 1 >= argc) {
-                fprintf(stderr, "Error: -o requires an output file argument.\n");
+                fprintf(stderr, "Error: --input requires a file argument.\n");
+                print_usage(argv[0]);
+                return 1;
+            }
+            input_flag = argv[++i];
+        } else if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "--output") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: %s requires an output file argument.\n", argv[i]);
                 print_usage(argv[0]);
                 return 1;
             }
             output_path = argv[++i];
+            dump_c = true; // --output/-o implies --translate
         } else if (strcmp(argv[i], "-") == 0) {
-            filename = argv[i];
+            positional = argv[i];
         } else if (argv[i][0] == '-') {
             fprintf(stderr, "Unknown flag: %s\n", argv[i]);
             print_usage(argv[0]);
             return 1;
         } else {
-            filename = argv[i];
+            positional = argv[i];
         }
     }
+
+    if (input_flag && positional) {
+        fprintf(stderr, "Error: input specified both as --input and as a positional argument.\n");
+        print_usage(argv[0]);
+        return 1;
+    }
+    filename = input_flag ? input_flag : positional;
 
     if (!filename) {
         fprintf(stderr, "Error: No input file specified.\n");
@@ -70,12 +91,6 @@ int main(int argc, char **argv) {
 
     if (!dump_tokens && !dump_ast && !dump_ir && !dump_c) {
         dump_ir = true; // Default
-    }
-
-    if (output_path && !dump_c) {
-        fprintf(stderr, "Error: -o requires --translate/--emit-c.\n");
-        print_usage(argv[0]);
-        return 1;
     }
 
     g_filename = (strcmp(filename, "-") == 0) ? "<stdin>" : filename;
