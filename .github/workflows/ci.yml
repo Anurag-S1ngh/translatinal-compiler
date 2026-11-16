@@ -15,7 +15,7 @@ jobs:
 
       - name: Translated output compiles warning-free
         run: |
-          for f in fib loops floats nested; do
+          for f in fib loops floats nested include deadstore; do
             ./trco tests/cases/$f.c --translate -o /tmp/$f.tr.c
             gcc -std=c11 -Wall -Wextra /tmp/$f.tr.c -o /tmp/$f.tr
           done

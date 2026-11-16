@@ -91,6 +91,7 @@ The project includes test programs under `tests/cases/`:
 | `floats.c`    | `float` arithmetic, `char` variables, mixed `int`/`float` expressions |
 | `nested.c`    | Nested `for`/`while` loops with `break`/`continue` |
 | `include.c`   | `#include` directive — directives are skipped      |
+| `deadstore.c` | Dead-store elimination — overwritten initializer folded |
 | `undeclared.c`| Expected to fail semantic analysis               |
 
 Run `make test` to execute the full test suite.
@@ -126,6 +127,7 @@ implicit-cast insertion) back to C. Correctness properties:
 - **Evaluation order preserved**: every binary op is fully parenthesized, so target-C precedence cannot change semantics.
 - **Short-circuit preserved**: `&&` / `||` are emitted as-is, keeping lazy evaluation (including side-effect ordering).
 - **Types preserved**: `int`/`float`/`char`/`void` signatures, declarations, and sema-inserted `(float)`/`(int)` casts are emitted explicitly.
+- **Dead stores eliminated**: after semantic analysis, a straight-line assignment whose value is overwritten before any read is dropped (`int a = 5; a = 10;` → `int a = 10;`). The pass is deliberately conservative: it never crosses a function call, a control-flow boundary, or a read of the variable, and it never deletes side-effecting expressions.
 - **Literals safe**: strings/chars are re-escaped; `for (;;)` / empty clauses round-trip; single statements are wrapped in braces to avoid dangling-`else` ambiguity.
 - **Self-contained output**: `#include <stdio.h>` is prepended and nullary `()` becomes `(void)`, so `gcc`/`clang` with `-std=c11 -Wall -Wextra` accept the output cleanly.
 
@@ -138,7 +140,7 @@ gcc -std=c11 -Wno-implicit-function-declaration tests/cases/fib.c -o /tmp/fib.or
 diff <(/tmp/fib.orig) <(/tmp/fib.tr) && echo CORRECT
 ```
 
-`make test` runs this differential check automatically for `fib.c`, `loops.c`, `floats.c` and `nested.c`, plus recompile checks, the `-o` target-file path, stdin input, the `--emit-c`/`--c` aliases, and the `undeclared.c` must-fail case. The translated output compiles warning-free under `gcc -std=c11 -Wall -Wextra` and `clang -std=c11 -Wall -Wextra`.
+`make test` runs this differential check automatically for `fib.c`, `loops.c`, `floats.c`, `nested.c`, `include.c` and `deadstore.c`, plus recompile checks, the `-o` target-file path, stdin input, the `--emit-c`/`--c` aliases, and the `undeclared.c` must-fail case. The translated output compiles warning-free under `gcc -std=c11 -Wall -Wextra` and `clang -std=c11 -Wall -Wextra`.
 
 The project also ships a GitHub Actions workflow (`.github/workflows/ci.yml`) that builds `trco`, runs the test suite, and recompiles every translation on each push and pull request.
 
