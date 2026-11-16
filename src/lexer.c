@@ -84,6 +84,14 @@ static void skip_whitespace_and_comments(Lexer *lexer) {
         char c = peek(lexer);
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
             advance(lexer);
+        } else if (c == '#') {
+            // Preprocessor directive. trco has no preprocessor: any '#'
+            // starts a directive line that is skipped. It never carries
+            // meaning for the C subset — macros are not expanded, and
+            // translated output emits the #include it needs on its own.
+            while (peek(lexer) != '\n' && peek(lexer) != '\0') {
+                advance(lexer);
+            }
         } else if (c == '/' && peek_next(lexer) == '/') {
             // Line comment
             advance(lexer);
